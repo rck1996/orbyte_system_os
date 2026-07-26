@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ORBYTE_">
+  <rect x="3" y="5" width="58" height="54" rx="3" fill="#f3f0e7" stroke="#191a14" stroke-width="3"/>
+  <path d="M4 17H60" stroke="#191a14" stroke-width="3"/>
+  <circle cx="11" cy="11" r="2" fill="#c9ef24" stroke="#191a14"/>
+  <circle cx="32" cy="37" r="13" fill="none" stroke="#191a14" stroke-width="3"/>
+  <circle cx="32" cy="37" r="4" fill="#c9ef24" stroke="#191a14" stroke-width="2"/>
+  <path d="M43 50H54" stroke="#718600" stroke-width="3"/>
+</svg>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f3f0e7">
+  <meta name="description" content="ORBYTE_: sistema operativo personal local-first con kernel de contexto, terminal editorial e IA local opcional.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/orbyte.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="shared/styles.css?v=4.3.0">
+  <script>
+    (()=>{
+      const build='4.3.0-fresh-start';
+      localStorage.setItem('orbyte.build',build);
+      if(!('serviceWorker' in navigator))return;
+      addEventListener('load',async()=>{
+        const controlled=Boolean(navigator.serviceWorker.controller);
+        const registrations=await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(registration=>registration.unregister()));
+        if('caches' in globalThis){
+          const keys=await caches.keys();
+          await Promise.all(keys.filter(key=>key.startsWith('orbyte-personal-os-')).map(key=>caches.delete(key)));
+        }
+        const reloadKey=`orbyte.fresh.${build}`;
+        if(controlled&&!sessionStorage.getItem(reloadKey)){
+          sessionStorage.setItem(reloadKey,'1');
+          location.reload();
+        }
+      },{once:true});
+    })();
+  </script>
+  <title>ORBYTE_ / Personal OS</title>
+</head>
+<body>
+  <header class="topbar">
+    <button class="brand" data-route="edition" type="button">ORBYTE<span>_</span></button>
+    <nav id="mainNav" class="main-nav" aria-label="Navegación principal"></nav>
+    <div class="top-actions">
+      <button id="systemStatus" class="status-pill" data-route="settings" type="button"><i></i><span>KERNEL LOCAL</span></button>
+      <button id="newCapture" class="button acid" type="button">+ CAPTURAR</button>
+    </div>
+  </header>
+  <div id="moreNavMenu" class="more-nav-menu" hidden aria-label="Más secciones"></div>
+  <main>
+    <section class="masthead">
+      <div class="edition-mark"><span>PERSONAL OS</span><span id="editionDate"></span></div>
+      <div class="masthead-title">
+        <p class="kicker">CONTEXT KERNEL / CONVERSATIONAL AI / DECISION RADAR</p>
+        <h1>Tu sistema,<br><em>en conversación.</em></h1>
+      </div>
+      <aside class="masthead-note">
+        <p id="mastheadLead">ORBYTE_ conecta acciones, proyectos, tiempo y dinero para ayudarte a decidir qué sigue.</p>
+        <div id="heroStats" class="hero-stats"></div>
+      </aside>
+    </section>
+    <section id="appView" class="app-view"></section>
+  </main>
+
+  <dialog id="captureDialog">
+    <form method="dialog" id="captureForm">
+      <header class="dialog-head"><div><p class="kicker">UNIVERSAL CAPTURE</p><h2>Habla con ORBYTE_</h2></div><button type="button" data-close-dialog aria-label="Cerrar">×</button></header>
+      <label><span>Escribe como lo dirías</span><textarea name="text" required placeholder="Ej: Compré una Audient EVO 4 por 120.000 para el estudio musical"></textarea></label>
+      <p class="dialog-note">ORBYTE_ mostrará la interpretación y las relaciones antes de modificar tus datos.</p>
+      <footer><button type="button" data-close-dialog>Cancelar</button><button type="submit" class="button acid" value="submit">Interpretar</button></footer>
+    </form>
+  </dialog>
+
+  <input id="importFile" type="file" accept="application/json" hidden>
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="app/main.js?v=4.3.0"></script>
+</body>
+</html>

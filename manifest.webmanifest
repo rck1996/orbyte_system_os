@@ -1,0 +1,13 @@
+{
+  "id": "./",
+  "name": "ORBYTE_ Personal OS",
+  "short_name": "ORBYTE_",
+  "description": "Sistema operativo personal local-first con kernel de contexto, terminal editorial y Ollama opcional.",
+  "lang": "es",
+  "start_url": "./#edition",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f0e7",
+  "theme_color": "#f3f0e7",
+  "icons": [{"src":"assets/orbyte.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]
+}
