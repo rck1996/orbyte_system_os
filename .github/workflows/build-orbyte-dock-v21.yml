@@ -50,11 +50,16 @@ jobs:
           $parts = Get-ChildItem 'dock/v21parts/p*.txt' | Sort-Object Name
           if ($parts.Count -ne 8) { throw "Expected 8 version 2.1 parts, found $($parts.Count)." }
           $lengths = @(5600, 5600, 5600, 5600, 5600, 5600, 5600, 5568)
+          $sha = [Security.Cryptography.SHA256]::Create()
           $chunks = for ($i = 0; $i -lt $parts.Count; $i++) {
             $raw = (Get-Content $parts[$i].FullName -Raw).Trim()
             if ($raw.Length -lt $lengths[$i]) { throw "Part $($parts[$i].Name) is shorter than expected." }
-            $raw.Substring(0, $lengths[$i])
+            $chunk = $raw.Substring(0, $lengths[$i])
+            $chunkHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($chunk)))).Replace('-', '').ToLowerInvariant()
+            Write-Host "$($parts[$i].Name) $chunkHash"
+            $chunk
           }
+          $sha.Dispose()
           $base64 = $chunks -join ''
           if ($base64.Length -ne 44768) { throw "Unexpected overlay base64 length: $($base64.Length)" }
           $bytes = [Convert]::FromBase64String($base64)
