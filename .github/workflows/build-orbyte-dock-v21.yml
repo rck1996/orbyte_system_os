@@ -49,7 +49,14 @@ jobs:
         run: |
           $parts = Get-ChildItem 'dock/v21parts/p*.txt' | Sort-Object Name
           if ($parts.Count -ne 8) { throw "Expected 8 version 2.1 parts, found $($parts.Count)." }
-          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $lengths = @(5600, 5600, 5600, 5600, 5600, 5600, 5600, 5568)
+          $chunks = for ($i = 0; $i -lt $parts.Count; $i++) {
+            $raw = (Get-Content $parts[$i].FullName -Raw).Trim()
+            if ($raw.Length -lt $lengths[$i]) { throw "Part $($parts[$i].Name) is shorter than expected." }
+            $raw.Substring(0, $lengths[$i])
+          }
+          $base64 = $chunks -join ''
+          if ($base64.Length -ne 44768) { throw "Unexpected overlay base64 length: $($base64.Length)" }
           $bytes = [Convert]::FromBase64String($base64)
           $overlayZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.1.0-overlay.zip'
           [IO.File]::WriteAllBytes($overlayZip, $bytes)
