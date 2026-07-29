@@ -52,11 +52,20 @@ jobs:
           $lengths = @(5600, 5600, 5600, 5600, 5600, 5600, 5600, 5568)
           $sha = [Security.Cryptography.SHA256]::Create()
           $chunks = for ($i = 0; $i -lt $parts.Count; $i++) {
-            $raw = (Get-Content $parts[$i].FullName -Raw).Trim()
-            if ($raw.Length -lt $lengths[$i]) { throw "Part $($parts[$i].Name) is shorter than expected." }
-            $chunk = $raw.Substring(0, $lengths[$i])
+            if ($i -eq 2) {
+              $chunk = @('a','b','c','d') | ForEach-Object { (Get-Content "dock/v21fix/p02$_.txt" -Raw).Trim() }
+              $chunk = $chunk -join ''
+            } elseif ($i -eq 4) {
+              $chunk = @('a','b','c','d') | ForEach-Object { (Get-Content "dock/v21fix/p04$_.txt" -Raw).Trim() }
+              $chunk = $chunk -join ''
+            } else {
+              $raw = (Get-Content $parts[$i].FullName -Raw).Trim()
+              if ($raw.Length -lt $lengths[$i]) { throw "Part $($parts[$i].Name) is shorter than expected." }
+              $chunk = $raw.Substring(0, $lengths[$i])
+            }
+            if ($chunk.Length -ne $lengths[$i]) { throw "Unexpected length for part $i`: $($chunk.Length)" }
             $chunkHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($chunk)))).Replace('-', '').ToLowerInvariant()
-            Write-Host "$($parts[$i].Name) $chunkHash"
+            Write-Host "p$('{0:d2}' -f $i) $chunkHash"
             $chunk
           }
           $sha.Dispose()
