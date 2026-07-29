@@ -1,0 +1,121 @@
+name: Build Orbyte Dock 2.2
+
+on:
+  push:
+    branches:
+      - codex/orbyte-dock-2.2-build
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct v2 source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v2parts/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 12) { throw "Expected 12 base source parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $sourceZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-base.zip'
+          [IO.File]::WriteAllBytes($sourceZip, $bytes)
+          New-Item -ItemType Directory -Path 'dock/work-v22' -Force | Out-Null
+          Expand-Archive -Path $sourceZip -DestinationPath 'dock/work-v22' -Force
+
+      - name: Apply 2.0.1 foundation
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v201overlay3/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 5) { throw "Expected 5 foundation parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $overlayZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.0.1-overlay.zip'
+          [IO.File]::WriteAllBytes($overlayZip, $bytes)
+          Expand-Archive -Path $overlayZip -DestinationPath 'dock/work-v22' -Force
+
+      - name: Apply 2.1 overlay
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v21parts/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 8) { throw "Expected 8 version 2.1 parts, found $($parts.Count)." }
+          $lengths = @(5600, 5600, 5600, 5600, 5600, 5600, 5600, 5568)
+          $chunks = for ($i = 0; $i -lt $parts.Count; $i++) {
+            if ($i -eq 2) {
+              @(
+                (Get-Content 'dock/v21fix/p02a.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02b.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c0.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c1.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c2.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c3.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02d.txt' -Raw).Trim()
+              ) -join ''
+            } elseif ($i -eq 4) {
+              (@('a','b','c','d') | ForEach-Object { (Get-Content "dock/v21fix/p04$_.txt" -Raw).Trim() }) -join ''
+            } else {
+              $raw = (Get-Content $parts[$i].FullName -Raw).Trim()
+              if ($raw.Length -lt $lengths[$i]) { throw "Part $($parts[$i].Name) is shorter than expected." }
+              $raw.Substring(0, $lengths[$i])
+            }
+          }
+          $base64 = $chunks -join ''
+          if ($base64.Length -ne 44768) { throw "Unexpected v2.1 overlay length: $($base64.Length)" }
+          $bytes = [Convert]::FromBase64String($base64)
+          $overlayZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.1.0-overlay.zip'
+          [IO.File]::WriteAllBytes($overlayZip, $bytes)
+          $actual = (Get-FileHash $overlayZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '92ab89b2b99c63e2563cac90a8d1881d9ec19b47b817b8c3730041cca1a7a8ef') { throw "v2.1 overlay hash mismatch: $actual" }
+          Expand-Archive -Path $overlayZip -DestinationPath 'dock/work-v22' -Force
+
+      - name: Apply 2.2 premium layout
+        shell: pwsh
+        run: |
+          $overlayZip = 'dock/v22/OrbyteDock-2.2.0-overlay.zip'
+          $actual = (Get-FileHash $overlayZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '0947e4d06bc1b2f7455af0c9ef75db499a4db2475d69164fe10e5005d0baa2a4') { throw "v2.2 overlay hash mismatch: $actual" }
+          Expand-Archive -Path $overlayZip -DestinationPath 'dock/work-v22' -Force
+
+      - name: Compile and run self-test
+        shell: pwsh
+        working-directory: dock/work-v22
+        run: |
+          ./Build.ps1
+          if (-not (Test-Path './OrbyteDock.exe')) { throw 'OrbyteDock.exe was not produced.' }
+
+      - name: Build distributable ZIP
+        shell: pwsh
+        run: |
+          $package = 'dock/package-v22'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          Copy-Item 'dock/work-v22/OrbyteDock.exe' $package
+          Copy-Item 'dock/work-v22/Install.cmd' $package
+          Copy-Item 'dock/work-v22/Install.ps1' $package
+          Copy-Item 'dock/work-v22/Uninstall.cmd' $package
+          Copy-Item 'dock/work-v22/Uninstall.ps1' $package
+          Copy-Item 'dock/work-v22/RestoreTaskbar.cmd' $package
+          Copy-Item 'dock/work-v22/ResetDock.cmd' $package
+          Copy-Item 'dock/work-v22/Portable.cmd' $package
+          Copy-Item 'dock/work-v22/README.md' $package
+          Copy-Item 'dock/work-v22/CHANGELOG.md' $package
+          Copy-Item 'dock/work-v22/LICENSE.txt' $package
+          Compress-Archive -Path "$package/*" -DestinationPath 'OrbyteDock-2.2.0-Windows.zip' -Force
+          Get-FileHash 'OrbyteDock-2.2.0-Windows.zip' -Algorithm SHA256
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrbyteDock-2.2.0-Windows
+          path: OrbyteDock-2.2.0-Windows.zip
+          if-no-files-found: error
+          retention-days: 7
