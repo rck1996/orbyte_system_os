@@ -43,6 +43,11 @@ jobs:
           $overlayZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.0.1-overlay.zip'
           [IO.File]::WriteAllBytes($overlayZip, $bytes)
           Expand-Archive -Path $overlayZip -DestinationPath 'dock/work' -Force
+          $dockForm = 'dock/work/src/OrbyteDock/DockForm.cs'
+          $text = Get-Content $dockForm -Raw
+          $text = $text.Replace('private readonly Timer ', 'private readonly System.Windows.Forms.Timer ')
+          $text = $text.Replace('new Timer {', 'new System.Windows.Forms.Timer {')
+          Set-Content $dockForm $text -Encoding UTF8
 
       - name: Compile and run self-test
         shell: pwsh
