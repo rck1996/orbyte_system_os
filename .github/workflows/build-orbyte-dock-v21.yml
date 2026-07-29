@@ -53,8 +53,15 @@ jobs:
           $sha = [Security.Cryptography.SHA256]::Create()
           $chunks = for ($i = 0; $i -lt $parts.Count; $i++) {
             if ($i -eq 2) {
-              $chunk = @('a','b','c','d') | ForEach-Object { (Get-Content "dock/v21fix/p02$_.txt" -Raw).Trim() }
-              $chunk = $chunk -join ''
+              $chunk = @(
+                (Get-Content 'dock/v21fix/p02a.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02b.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c0.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c1.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c2.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02c3.txt' -Raw).Trim(),
+                (Get-Content 'dock/v21fix/p02d.txt' -Raw).Trim()
+              ) -join ''
             } elseif ($i -eq 4) {
               $chunk = @('a','b','c','d') | ForEach-Object { (Get-Content "dock/v21fix/p04$_.txt" -Raw).Trim() }
               $chunk = $chunk -join ''
