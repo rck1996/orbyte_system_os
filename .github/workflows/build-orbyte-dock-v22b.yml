@@ -1,0 +1,75 @@
+name: Build Orbyte Dock 2.2 validated
+
+on:
+  push:
+    branches: [codex/orbyte-dock-2.2-build]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct validated 2.1 source
+        shell: pwsh
+        run: |
+          $base = (Get-ChildItem 'dock/v2parts/p*.txt' | Sort-Object Name | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/base.zip", [Convert]::FromBase64String($base))
+          New-Item -ItemType Directory 'dock/work-v22' -Force | Out-Null
+          Expand-Archive "$env:RUNNER_TEMP/base.zip" 'dock/work-v22' -Force
+
+          $foundation = (Get-ChildItem 'dock/v201overlay3/p*.txt' | Sort-Object Name | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/foundation.zip", [Convert]::FromBase64String($foundation))
+          Expand-Archive "$env:RUNNER_TEMP/foundation.zip" 'dock/work-v22' -Force
+
+          $parts = Get-ChildItem 'dock/v21parts/p*.txt' | Sort-Object Name
+          $lengths = @(5600,5600,5600,5600,5600,5600,5600,5568)
+          $chunks = for ($i=0; $i -lt 8; $i++) {
+            if ($i -eq 2) {
+              @((Get-Content 'dock/v21fix/p02a.txt' -Raw).Trim(),(Get-Content 'dock/v21fix/p02b.txt' -Raw).Trim(),(Get-Content 'dock/v21fix/p02c0.txt' -Raw).Trim(),(Get-Content 'dock/v21fix/p02c1.txt' -Raw).Trim(),(Get-Content 'dock/v21fix/p02c2.txt' -Raw).Trim(),(Get-Content 'dock/v21fix/p02c3.txt' -Raw).Trim(),(Get-Content 'dock/v21fix/p02d.txt' -Raw).Trim()) -join ''
+            } elseif ($i -eq 4) {
+              (@('a','b','c','d') | ForEach-Object { (Get-Content "dock/v21fix/p04$_.txt" -Raw).Trim() }) -join ''
+            } else {
+              ((Get-Content $parts[$i].FullName -Raw).Trim()).Substring(0,$lengths[$i])
+            }
+          }
+          $v21 = $chunks -join ''
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/v21.zip", [Convert]::FromBase64String($v21))
+          Expand-Archive "$env:RUNNER_TEMP/v21.zip" 'dock/work-v22' -Force
+
+      - name: Apply premium 2.2 layout
+        shell: pwsh
+        run: |
+          $zip='dock/v22/OrbyteDock-2.2.0-overlay.zip'
+          Get-FileHash $zip -Algorithm SHA256
+          Expand-Archive $zip 'dock/work-v22' -Force
+
+      - name: Compile and self-test
+        shell: pwsh
+        working-directory: dock/work-v22
+        run: |
+          ./Build.ps1
+          if (-not (Test-Path './OrbyteDock.exe')) { throw 'OrbyteDock.exe was not produced.' }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out='dock/package-v22'
+          New-Item -ItemType Directory $out -Force | Out-Null
+          @('OrbyteDock.exe','Install.cmd','Install.ps1','Uninstall.cmd','Uninstall.ps1','RestoreTaskbar.cmd','ResetDock.cmd','Portable.cmd','README.md','CHANGELOG.md','LICENSE.txt') | ForEach-Object { Copy-Item "dock/work-v22/$_" $out }
+          Compress-Archive "$out/*" 'OrbyteDock-2.2.0-Windows.zip' -Force
+          Get-FileHash 'OrbyteDock-2.2.0-Windows.zip' -Algorithm SHA256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OrbyteDock-2.2.0-Windows
+          path: OrbyteDock-2.2.0-Windows.zip
+          if-no-files-found: error
+          retention-days: 7

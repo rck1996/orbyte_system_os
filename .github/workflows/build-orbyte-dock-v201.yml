@@ -1,0 +1,88 @@
+name: Build Orbyte Dock 2.0.1
+
+on:
+  push:
+    branches:
+      - codex/orbyte-dock-2.0.1
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct v2 source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v2parts/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 12) { throw "Expected 12 base source parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $sourceZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.0.0-source.zip'
+          [IO.File]::WriteAllBytes($sourceZip, $bytes)
+          New-Item -ItemType Directory -Path 'dock/work' -Force | Out-Null
+          Expand-Archive -Path $sourceZip -DestinationPath 'dock/work' -Force
+
+      - name: Apply 2.0.1 overlay
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v201overlay3/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 5) { throw "Expected 5 overlay parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $overlayZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.0.1-overlay.zip'
+          [IO.File]::WriteAllBytes($overlayZip, $bytes)
+          Expand-Archive -Path $overlayZip -DestinationPath 'dock/work' -Force
+          $dockForm = 'dock/work/src/OrbyteDock/DockForm.cs'
+          $text = Get-Content $dockForm -Raw
+          $text = $text.Replace('private readonly Timer ', 'private readonly System.Windows.Forms.Timer ')
+          $text = $text.Replace('new Timer {', 'new System.Windows.Forms.Timer {')
+          Set-Content $dockForm $text -Encoding UTF8
+          $catalog = 'dock/work/src/OrbyteDock/AppCatalogForm.cs'
+          $text = Get-Content $catalog -Raw
+          $text = $text.Replace('Task.Factory.StartNew(DiscoverApplications)', 'Task.Factory.StartNew<List<AppCatalogItem>>(new Func<List<AppCatalogItem>>(DiscoverApplications))')
+          Set-Content $catalog $text -Encoding UTF8
+
+      - name: Compile and run self-test
+        shell: pwsh
+        working-directory: dock/work
+        run: |
+          ./Build.ps1
+          if (-not (Test-Path './OrbyteDock.exe')) { throw 'OrbyteDock.exe was not produced.' }
+
+      - name: Build distributable ZIP
+        shell: pwsh
+        run: |
+          $package = 'dock/package-v201'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          Copy-Item 'dock/work/OrbyteDock.exe' $package
+          Copy-Item 'dock/work/Install.cmd' $package
+          Copy-Item 'dock/work/Install.ps1' $package
+          Copy-Item 'dock/work/Uninstall.cmd' $package
+          Copy-Item 'dock/work/Uninstall.ps1' $package
+          Copy-Item 'dock/work/RestoreTaskbar.cmd' $package
+          Copy-Item 'dock/work/ResetDock.cmd' $package
+          Copy-Item 'dock/work/Portable.cmd' $package
+          Copy-Item 'dock/work/README.md' $package
+          Copy-Item 'dock/work/CHANGELOG.md' $package
+          Copy-Item 'dock/work/LICENSE.txt' $package
+          Compress-Archive -Path "$package/*" -DestinationPath 'OrbyteDock-2.0.1-Windows.zip' -Force
+          Get-FileHash 'OrbyteDock-2.0.1-Windows.zip' -Algorithm SHA256
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrbyteDock-2.0.1-Windows
+          path: OrbyteDock-2.0.1-Windows.zip
+          if-no-files-found: error
+          retention-days: 7
