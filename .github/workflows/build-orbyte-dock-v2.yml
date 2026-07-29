@@ -1,0 +1,68 @@
+name: Build Orbyte Dock 2
+
+on:
+  push:
+    branches:
+      - codex/orbyte-dock-2.0
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct source package
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v2parts/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 12) { throw "Expected 12 source parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $sourceZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.0.0-source.zip'
+          [IO.File]::WriteAllBytes($sourceZip, $bytes)
+          New-Item -ItemType Directory -Path 'dock/work' -Force | Out-Null
+          Expand-Archive -Path $sourceZip -DestinationPath 'dock/work' -Force
+
+      - name: Compile and run self-test
+        shell: pwsh
+        working-directory: dock/work
+        run: |
+          ./Build.ps1
+          if (-not (Test-Path './OrbyteDock.exe')) { throw 'OrbyteDock.exe was not produced.' }
+
+      - name: Build distributable ZIP
+        shell: pwsh
+        run: |
+          $package = 'dock/package'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          Copy-Item 'dock/work/OrbyteDock.exe' $package
+          Copy-Item 'dock/work/Install.cmd' $package
+          Copy-Item 'dock/work/Install.ps1' $package
+          Copy-Item 'dock/work/Uninstall.cmd' $package
+          Copy-Item 'dock/work/Uninstall.ps1' $package
+          Copy-Item 'dock/work/RestoreTaskbar.cmd' $package
+          Copy-Item 'dock/work/ResetDock.cmd' $package
+          Copy-Item 'dock/work/Portable.cmd' $package
+          Copy-Item 'dock/work/README.md' $package
+          Copy-Item 'dock/work/CHANGELOG.md' $package
+          Copy-Item 'dock/work/LICENSE.txt' $package
+          Compress-Archive -Path "$package/*" -DestinationPath 'OrbyteDock-2.0.0-Windows.zip' -Force
+          Get-FileHash 'OrbyteDock-2.0.0-Windows.zip' -Algorithm SHA256
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrbyteDock-2.0.0-Windows
+          path: OrbyteDock-2.0.0-Windows.zip
+          if-no-files-found: error
+          retention-days: 7
