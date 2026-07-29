@@ -48,6 +48,10 @@ jobs:
           $text = $text.Replace('private readonly Timer ', 'private readonly System.Windows.Forms.Timer ')
           $text = $text.Replace('new Timer {', 'new System.Windows.Forms.Timer {')
           Set-Content $dockForm $text -Encoding UTF8
+          $catalog = 'dock/work/src/OrbyteDock/AppCatalogForm.cs'
+          $text = Get-Content $catalog -Raw
+          $text = $text.Replace('Task.Factory.StartNew(DiscoverApplications)', 'Task.Factory.StartNew<List<AppCatalogItem>>(new Func<List<AppCatalogItem>>(DiscoverApplications))')
+          Set-Content $catalog $text -Encoding UTF8
 
       - name: Compile and run self-test
         shell: pwsh
