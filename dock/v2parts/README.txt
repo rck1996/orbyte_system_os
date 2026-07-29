@@ -1,0 +1,1 @@
+These files are deterministic Base64 chunks of the Orbyte Dock 2.0 source ZIP. The Windows CI workflow reconstructs the ZIP, compiles the .NET Framework 4.8 application, runs its self-test and publishes the distributable package. They are isolated from the main ORBYTE application.
