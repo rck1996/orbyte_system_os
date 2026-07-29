@@ -1,0 +1,93 @@
+name: Build Orbyte Dock 2.1
+
+on:
+  push:
+    branches:
+      - codex/orbyte-dock-2.1
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct base source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v2parts/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 12) { throw "Expected 12 base source parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $sourceZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-base.zip'
+          [IO.File]::WriteAllBytes($sourceZip, $bytes)
+          New-Item -ItemType Directory -Path 'dock/work-v21' -Force | Out-Null
+          Expand-Archive -Path $sourceZip -DestinationPath 'dock/work-v21' -Force
+
+      - name: Apply 2.0.1 foundation
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v201overlay3/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 5) { throw "Expected 5 foundation parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $overlayZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.0.1-overlay.zip'
+          [IO.File]::WriteAllBytes($overlayZip, $bytes)
+          Expand-Archive -Path $overlayZip -DestinationPath 'dock/work-v21' -Force
+
+      - name: Apply 2.1 overlay
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'dock/v21parts/p*.txt' | Sort-Object Name
+          if ($parts.Count -ne 8) { throw "Expected 8 version 2.1 parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($base64)
+          $overlayZip = Join-Path $env:RUNNER_TEMP 'OrbyteDock-2.1.0-overlay.zip'
+          [IO.File]::WriteAllBytes($overlayZip, $bytes)
+          $actual = (Get-FileHash $overlayZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = '92ab89b2b99c63e2563cac90a8d1881d9ec19b47b817b8c3730041cca1a7a8ef'
+          if ($actual -ne $expected) { throw "Version 2.1 overlay hash mismatch: $actual" }
+          Expand-Archive -Path $overlayZip -DestinationPath 'dock/work-v21' -Force
+
+      - name: Compile and run self-test
+        shell: pwsh
+        working-directory: dock/work-v21
+        run: |
+          ./Build.ps1
+          if (-not (Test-Path './OrbyteDock.exe')) { throw 'OrbyteDock.exe was not produced.' }
+
+      - name: Build distributable ZIP
+        shell: pwsh
+        run: |
+          $package = 'dock/package-v21'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          Copy-Item 'dock/work-v21/OrbyteDock.exe' $package
+          Copy-Item 'dock/work-v21/Install.cmd' $package
+          Copy-Item 'dock/work-v21/Install.ps1' $package
+          Copy-Item 'dock/work-v21/Uninstall.cmd' $package
+          Copy-Item 'dock/work-v21/Uninstall.ps1' $package
+          Copy-Item 'dock/work-v21/RestoreTaskbar.cmd' $package
+          Copy-Item 'dock/work-v21/ResetDock.cmd' $package
+          Copy-Item 'dock/work-v21/Portable.cmd' $package
+          Copy-Item 'dock/work-v21/README.md' $package
+          Copy-Item 'dock/work-v21/CHANGELOG.md' $package
+          Copy-Item 'dock/work-v21/LICENSE.txt' $package
+          Compress-Archive -Path "$package/*" -DestinationPath 'OrbyteDock-2.1.0-Windows.zip' -Force
+          Get-FileHash 'OrbyteDock-2.1.0-Windows.zip' -Algorithm SHA256
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrbyteDock-2.1.0-Windows
+          path: OrbyteDock-2.1.0-Windows.zip
+          if-no-files-found: error
+          retention-days: 7
