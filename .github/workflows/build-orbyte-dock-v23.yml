@@ -1,0 +1,73 @@
+name: Build Orbyte Dock 2.3
+
+on:
+  push:
+    branches:
+      - codex/orbyte-dock-2.3
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate source archive
+        shell: pwsh
+        run: |
+          $zip = 'dock/v23/OrbyteDock-2.3.0-source.zip'
+          if (-not (Test-Path $zip)) { throw 'Source archive is missing.' }
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = '115e2299ee81fa60c77bba7aabdfce0ae31be16d4eddeea5226865264ccb13b0'
+          Write-Host "Source SHA-256: $actual"
+          if ($actual -ne $expected) { throw "Source archive hash mismatch: $actual" }
+
+      - name: Expand source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path 'dock/work-v23' -Force | Out-Null
+          Expand-Archive -Path 'dock/v23/OrbyteDock-2.3.0-source.zip' -DestinationPath 'dock/work-v23' -Force
+
+      - name: Compile and run self-test
+        shell: pwsh
+        working-directory: dock/work-v23
+        run: |
+          ./Build.ps1
+          if (-not (Test-Path './OrbyteDock.exe')) { throw 'OrbyteDock.exe was not produced.' }
+          ./OrbyteDock.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Self-test failed with exit code $LASTEXITCODE" }
+
+      - name: Build distributable ZIP
+        shell: pwsh
+        run: |
+          $package = 'dock/package-v23'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          $files = @(
+            'OrbyteDock.exe',
+            'Install.cmd', 'Install.ps1',
+            'Uninstall.cmd', 'Uninstall.ps1',
+            'RestoreTaskbar.cmd', 'ResetDock.cmd', 'Portable.cmd',
+            'README.md', 'CHANGELOG.md', 'LICENSE.txt'
+          )
+          foreach ($file in $files) {
+            Copy-Item (Join-Path 'dock/work-v23' $file) $package
+          }
+          Compress-Archive -Path "$package/*" -DestinationPath 'OrbyteDock-2.3.0-Windows.zip' -Force
+          Get-FileHash 'OrbyteDock-2.3.0-Windows.zip' -Algorithm SHA256
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrbyteDock-2.3.0-Windows
+          path: OrbyteDock-2.3.0-Windows.zip
+          if-no-files-found: error
+          retention-days: 7
